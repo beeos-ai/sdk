@@ -22,6 +22,20 @@ npm add @beeos-ai/sdk
   `Authorization: Bearer <jwt>` or `Authorization: Bearer oag_<user-api-key>`
   via `RequestInit` / the generated `Configuration`.
 
+For the stable, task-focused facade:
+
+```ts
+import { BeeOSClient } from "@beeos-ai/sdk";
+
+const beeos = new BeeOSClient({ apiKey: process.env.BEEOS_API_KEY! });
+const agents = await beeos.listAgents();
+const task = await beeos.createTask(agents[0].id, { message: "Open Settings" });
+const snapshot = await beeos.getTask(agents[0].id, task.data.taskId);
+```
+
+The generated APIs and models remain available from the package root for
+callers that need the complete Platform OpenAPI surface.
+
 ## Regenerate (maintainers)
 
 From the monorepo: `cd sdks/openapi-sdk && ./generate.sh` (or `npm run gen`).
