@@ -70,7 +70,7 @@ jobs:
 
       - name: Publish with npm Trusted Publisher
         if: steps.registry.outputs.exists == 'false' && env.NPM_TOKEN == ''
-        run: npm publish --access public
+        run: npm publish --access public --provenance
 
       - name: Verify public registry access
         run: |
