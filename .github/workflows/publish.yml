@@ -60,11 +60,11 @@ jobs:
         if: steps.registry.outputs.exists == 'false'
         run: npm publish --dry-run --access public
 
-      # NPM_TOKEN bootstraps the package's first release. Once npm Trusted
-      # Publisher is configured, delete the secret and the OIDC step takes over.
-      - name: Publish with bootstrap token
+      # Token authentication remains supported; GitHub's OIDC identity is still
+      # used to attach a verifiable provenance statement to the package.
+      - name: Publish with token and provenance
         if: steps.registry.outputs.exists == 'false' && env.NPM_TOKEN != ''
-        run: npm publish --access public
+        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
 
