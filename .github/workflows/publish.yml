@@ -72,12 +72,6 @@ jobs:
         if: steps.registry.outputs.exists == 'false' && env.NPM_TOKEN == ''
         run: npm publish --access public
 
-      - name: Ensure bootstrap package is public
-        if: env.NPM_TOKEN != ''
-        run: npm access set status=public @beeos-ai/sdk
-        env:
-          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
-
       - name: Verify public registry access
         run: |
           for attempt in 1 2 3 4 5 6; do
