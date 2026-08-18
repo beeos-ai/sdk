@@ -48,7 +48,8 @@ jobs:
         id: registry
         run: |
           package_version=$(node -p "require('./package.json').version")
-          if npm view "@beeos-ai/sdk@${package_version}" version >/dev/null 2>&1; then
+          version_url="https://registry.npmjs.org/%40beeos-ai%2Fsdk/${package_version}"
+          if curl --fail --silent --show-error "${version_url}" >/dev/null; then
             echo "exists=true" >> "${GITHUB_OUTPUT}"
             echo "@beeos-ai/sdk@${package_version} is already published"
           else
@@ -70,3 +71,22 @@ jobs:
       - name: Publish with npm Trusted Publisher
         if: steps.registry.outputs.exists == 'false' && env.NPM_TOKEN == ''
         run: npm publish --access public
+
+      - name: Ensure bootstrap package is public
+        if: env.NPM_TOKEN != ''
+        run: npm access set status=public @beeos-ai/sdk
+        env:
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
+
+      - name: Verify public registry access
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if curl --fail --silent --show-error \
+              "https://registry.npmjs.org/%40beeos-ai%2Fsdk" >/dev/null; then
+              exit 0
+            fi
+            echo "Waiting for npm registry index (attempt ${attempt}/6)..."
+            sleep 10
+          done
+          echo "::error::Published package is not anonymously readable"
+          exit 1
