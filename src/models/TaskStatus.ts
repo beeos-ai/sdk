@@ -19,11 +19,11 @@
  * names map 1:1 onto these wire values.
  * 
  * Non-terminal: `queued`, `running`, `input_required`, `auth_required`.
- * Terminal: `succeeded`, `failed`, `canceled`, `timeout`, `rejected`.
+ * Terminal: `completed`, `failed`, `canceled`, `timeout`, `rejected`.
  * 
  * State transitions:
  * ```
- * queued → running → succeeded
+ * queued → running → completed
  *                ├→ failed
  *                ├→ input_required ─→ running (on user.continue)
  *                └→ auth_required  ─→ running (on user.auth_grant)
@@ -39,7 +39,7 @@ export const TaskStatus = {
     Running: 'running',
     InputRequired: 'input_required',
     AuthRequired: 'auth_required',
-    Succeeded: 'succeeded',
+    Completed: 'completed',
     Failed: 'failed',
     Canceled: 'canceled',
     Timeout: 'timeout',

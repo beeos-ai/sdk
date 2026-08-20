@@ -810,7 +810,7 @@ export class TasksApi extends runtime.BaseAPI {
     }
 
     /**
-     * Subscribes a caller-supplied HTTPS endpoint to receive POST callbacks when the task reaches a terminal state (`succeeded` / `failed` / `canceled` / `timeout` / `rejected`). Idempotent on `(task_id, url)` — re-registering the same URL updates the token.  Implementation note: openapi-gateway is zero-DB; the underlying subscription is stored by A2A Service in its `webhooks` table. The webhook fires regardless of which protocol created the task (OpenAPI / A2A / MCP) — same row, different `protocol_filter`. 
+     * Subscribes a caller-supplied HTTPS endpoint to receive POST callbacks when the task reaches a terminal state (`completed` / `failed` / `canceled` / `timeout` / `rejected`). Idempotent on `(task_id, url)` — re-registering the same URL updates the token.  Implementation note: openapi-gateway is zero-DB; the underlying subscription is stored by A2A Service in its `webhooks` table. The webhook fires regardless of which protocol created the task (OpenAPI / A2A / MCP) — same row, different `protocol_filter`. 
      * Register a webhook callback for terminal task events.
      */
     async registerTaskWebhookRaw(requestParameters: RegisterTaskWebhookOperationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TaskWebhookResponse>> {
@@ -866,7 +866,7 @@ export class TasksApi extends runtime.BaseAPI {
     }
 
     /**
-     * Subscribes a caller-supplied HTTPS endpoint to receive POST callbacks when the task reaches a terminal state (`succeeded` / `failed` / `canceled` / `timeout` / `rejected`). Idempotent on `(task_id, url)` — re-registering the same URL updates the token.  Implementation note: openapi-gateway is zero-DB; the underlying subscription is stored by A2A Service in its `webhooks` table. The webhook fires regardless of which protocol created the task (OpenAPI / A2A / MCP) — same row, different `protocol_filter`. 
+     * Subscribes a caller-supplied HTTPS endpoint to receive POST callbacks when the task reaches a terminal state (`completed` / `failed` / `canceled` / `timeout` / `rejected`). Idempotent on `(task_id, url)` — re-registering the same URL updates the token.  Implementation note: openapi-gateway is zero-DB; the underlying subscription is stored by A2A Service in its `webhooks` table. The webhook fires regardless of which protocol created the task (OpenAPI / A2A / MCP) — same row, different `protocol_filter`. 
      * Register a webhook callback for terminal task events.
      */
     async registerTaskWebhook(requestParameters: RegisterTaskWebhookOperationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TaskWebhookResponse> {
