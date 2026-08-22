@@ -1,6 +1,6 @@
 {
   "name": "@beeos-ai/sdk",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "OpenAPI client for @beeos-ai/sdk",
   "author": "OpenAPI-Generator",
   "repository": {
