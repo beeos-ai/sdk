@@ -241,6 +241,24 @@ export interface InstanceDataDTO {
      */
     connectivityUpdatedAt?: Date;
     /**
+     * Independent MessageClient/Centrifugo connection reported by the
+     * current Runtime. One of `unknown` | `connecting` | `connected` |
+     * `reconnecting` | `disconnected` | `failed`. Cluster returns
+     * `unknown` when the Runtime lease is missing, expired, or the
+     * instance is stopped/terminated. This does not replace
+     * `connectivity`.
+     * 
+     * @type {string}
+     * @memberof InstanceDataDTO
+     */
+    msConnectionStatus?: InstanceDataDTOMsConnectionStatusEnum;
+    /**
+     * 
+     * @type {Date}
+     * @memberof InstanceDataDTO
+     */
+    msConnectionUpdatedAt?: Date;
+    /**
      * 
      * @type {Date}
      * @memberof InstanceDataDTO
@@ -284,6 +302,21 @@ export interface InstanceDataDTO {
      */
     capabilities?: { [key: string]: any; };
 }
+
+
+/**
+ * @export
+ */
+export const InstanceDataDTOMsConnectionStatusEnum = {
+    Unknown: 'unknown',
+    Connecting: 'connecting',
+    Connected: 'connected',
+    Reconnecting: 'reconnecting',
+    Disconnected: 'disconnected',
+    Failed: 'failed'
+} as const;
+export type InstanceDataDTOMsConnectionStatusEnum = typeof InstanceDataDTOMsConnectionStatusEnum[keyof typeof InstanceDataDTOMsConnectionStatusEnum];
+
 
 /**
  * Check if a given object implements the InstanceDataDTO interface.
@@ -356,6 +389,8 @@ export function InstanceDataDTOFromJSONTyped(json: any, ignoreDiscriminator: boo
         'stoppedAt': json['stoppedAt'] == null ? undefined : (new Date(json['stoppedAt'])),
         'statusEnteredAt': json['statusEnteredAt'] == null ? undefined : (new Date(json['statusEnteredAt'])),
         'connectivityUpdatedAt': json['connectivityUpdatedAt'] == null ? undefined : (new Date(json['connectivityUpdatedAt'])),
+        'msConnectionStatus': json['msConnectionStatus'] == null ? undefined : json['msConnectionStatus'],
+        'msConnectionUpdatedAt': json['msConnectionUpdatedAt'] == null ? undefined : (new Date(json['msConnectionUpdatedAt'])),
         'createdAt': json['createdAt'] == null ? undefined : (new Date(json['createdAt'])),
         'updatedAt': json['updatedAt'] == null ? undefined : (new Date(json['updatedAt'])),
         'screenshotUrl': json['screenshotUrl'] == null ? undefined : json['screenshotUrl'],
@@ -410,6 +445,8 @@ export function InstanceDataDTOToJSONTyped(value?: InstanceDataDTO | null, ignor
         'stoppedAt': value['stoppedAt'] == null ? undefined : ((value['stoppedAt']).toISOString()),
         'statusEnteredAt': value['statusEnteredAt'] == null ? undefined : ((value['statusEnteredAt']).toISOString()),
         'connectivityUpdatedAt': value['connectivityUpdatedAt'] == null ? undefined : ((value['connectivityUpdatedAt']).toISOString()),
+        'msConnectionStatus': value['msConnectionStatus'],
+        'msConnectionUpdatedAt': value['msConnectionUpdatedAt'] == null ? undefined : ((value['msConnectionUpdatedAt']).toISOString()),
         'createdAt': value['createdAt'] == null ? undefined : ((value['createdAt']).toISOString()),
         'updatedAt': value['updatedAt'] == null ? undefined : ((value['updatedAt']).toISOString()),
         'screenshotUrl': value['screenshotUrl'],
