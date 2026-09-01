@@ -5,14 +5,41 @@ test('CommonJS root and facade exports load', () => {
   const root = require('../dist/index.js');
   const facade = require('../dist/facade.js');
   assert.equal(typeof root.BeeOSClient, 'function');
+  assert.equal(typeof root.MobileClient, 'function');
   assert.equal(typeof facade.BeeOSClient, 'function');
+  assert.equal(typeof facade.MobileClient, 'function');
 });
 
 test('ESM root and facade exports load', async () => {
   const root = await import('../dist/esm/index.js');
   const facade = await import('../dist/esm/facade.js');
   assert.equal(typeof root.BeeOSClient, 'function');
+  assert.equal(typeof root.MobileClient, 'function');
   assert.equal(typeof facade.BeeOSClient, 'function');
+  assert.equal(typeof facade.MobileClient, 'function');
+});
+
+test('mobile facade waits for readiness and runs a task to completion', async () => {
+  const { MobileClient } = require('../dist/facade.js');
+  const fetch = async (input, init = {}) => {
+    const path = new URL(input.toString()).pathname;
+    if (path.endsWith('/mobile')) {
+      return Response.json({ success: true, data: { online: true, supported_actions: [] } });
+    }
+    if (path.endsWith('/tasks') && init.method === 'POST') {
+      return Response.json({ success: true, data: { task_id: 'task-1', agent_id: 'agent-1', status: 'queued' } }, { status: 202 });
+    }
+    if (path.endsWith('/tasks/task-1')) {
+      return Response.json({ success: true, data: { task_id: 'task-1', agent_id: 'agent-1', status: 'completed' } });
+    }
+    throw new Error(`unexpected request: ${init.method ?? 'GET'} ${path}`);
+  };
+  const client = new MobileClient({
+    apiKey: 'test-key', agentId: 'agent-1', instanceId: 'instance-1',
+    baseUrl: 'https://example.test', fetch,
+  });
+  assert.equal((await client.waitReady({ pollIntervalMs: 0 })).data.online, true);
+  assert.equal((await client.run({ message: 'Open Settings' }, { pollIntervalMs: 0 })).data.status, 'completed');
 });
 
 test('facade parses task SSE frames', async () => {

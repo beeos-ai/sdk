@@ -1,4 +1,4 @@
-import { AgentsApi, TasksApi } from './apis/index';
+import { AgentsApi, MobileApi, TasksApi } from './apis/index';
 import type {
   AgentDTO,
   AgentListResponse,
@@ -19,6 +19,17 @@ export interface TaskEvent {
   event: string;
   id?: string;
   data: unknown;
+}
+
+export interface MobileClientOptions extends BeeOSClientOptions {
+  agentId: string;
+  instanceId: string;
+}
+
+export interface WaitOptions {
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  signal?: AbortSignal;
 }
 
 /** Stable convenience client. The complete generated API remains exported. */
@@ -105,6 +116,78 @@ export class BeeOSClient {
       reader.releaseLock();
     }
   }
+}
+
+/** Task-first facade for Device Agent, BeeRunner, and Redroid. */
+export class MobileClient extends BeeOSClient {
+  readonly mobile: MobileApi;
+  readonly agentId: string;
+  readonly instanceId: string;
+
+  constructor(options: MobileClientOptions) {
+    super(options);
+    if (!options.agentId) throw new Error('agentId is required');
+    if (!options.instanceId) throw new Error('instanceId is required');
+    this.agentId = options.agentId;
+    this.instanceId = options.instanceId;
+    this.mobile = new MobileApi(new Configuration({
+      basePath: (options.baseUrl ?? 'https://openapi.beeos.ai').replace(/\/+$/, ''),
+      accessToken: options.apiKey,
+      fetchApi: options.fetch ?? globalThis.fetch,
+    }));
+  }
+
+  async waitReady(options: WaitOptions = {}): Promise<GetMobileInfoResult> {
+    const timeoutMs = options.timeoutMs ?? 60_000;
+    const pollIntervalMs = options.pollIntervalMs ?? 1_000;
+    const deadline = Date.now() + timeoutMs;
+    while (true) {
+      options.signal?.throwIfAborted();
+      const response = await this.mobile.getMobileInfo({ id: this.instanceId });
+      if (response.data?.online) return response;
+      if (Date.now() >= deadline) throw new Error('mobile runtime did not become ready before timeout');
+      await delay(pollIntervalMs, options.signal);
+    }
+  }
+
+  async run(request: CreateTaskRequest, options: WaitOptions = {}): Promise<TaskResponse> {
+    const created = await this.createTask(this.agentId, request);
+    const timeoutMs = options.timeoutMs ?? request.deadlineMs ?? 120_000;
+    const pollIntervalMs = options.pollIntervalMs ?? 1_000;
+    const deadline = Date.now() + timeoutMs;
+    while (true) {
+      options.signal?.throwIfAborted();
+      const snapshot = await this.getTask(this.agentId, created.data.taskId);
+      if (isTerminalTaskStatus(snapshot.data.status)) return snapshot;
+      if (Date.now() >= deadline) throw new Error(`task ${created.data.taskId} did not finish before timeout`);
+      await delay(pollIntervalMs, options.signal);
+    }
+  }
+
+  watch(taskId: string, options: { since?: number; signal?: AbortSignal } = {}): AsyncGenerator<TaskEvent> {
+    return this.taskEvents(this.agentId, taskId, options);
+  }
+
+  cancel(taskId: string, request?: CancelTaskRequest): Promise<TaskResponse> {
+    return this.cancelTask(this.agentId, taskId, request);
+  }
+}
+
+type GetMobileInfoResult = Awaited<ReturnType<MobileApi['getMobileInfo']>>;
+
+function isTerminalTaskStatus(status: string): boolean {
+  return new Set(['completed', 'failed', 'canceled', 'cancelled', 'timeout', 'rejected']).has(status);
+}
+
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(signal.reason ?? new Error('aborted'));
+    }, { once: true });
+  });
 }
 
 function parseSSEFrame(frame: string): TaskEvent | undefined {

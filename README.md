@@ -36,6 +36,25 @@ const snapshot = await beeos.getTask(agents[0].id, task.data.taskId);
 The generated APIs and models remain available from the package root for
 callers that need the complete Platform OpenAPI surface.
 
+For phone automation across Device Agent, BeeRunner, and Redroid:
+
+```ts
+import { MobileClient } from "@beeos-ai/sdk/facade";
+
+const mobile = new MobileClient({
+  apiKey: process.env.BEEOS_API_KEY!,
+  agentId: "agent-id",
+  instanceId: "instance-id",
+});
+await mobile.waitReady();
+const result = await mobile.run({ message: "Open Settings" });
+```
+
+`mobile.mobile` exposes the generated atomic-control API, including UI tree,
+app discovery, open app, drag, double tap, and long press. BeeRunner uses the
+durable task methods; its atomic-control capability is intentionally not
+advertised until a trusted Portal adapter exists.
+
 ## Regenerate (maintainers)
 
 From the monorepo: `cd sdks/openapi-sdk && ./generate.sh` (or `npm run gen`).

@@ -19,6 +19,8 @@ src/models/AgentCapabilitiesDTO.ts
 src/models/AgentDTO.ts
 src/models/AgentListResponse.ts
 src/models/AgentResponse.ts
+src/models/AppInfo.ts
+src/models/AppListResult.ts
 src/models/AttachmentRef.ts
 src/models/CancelConversation202Response.ts
 src/models/CancelConversation202ResponseData.ts
@@ -42,6 +44,7 @@ src/models/DeployModelsListResponse.ts
 src/models/DeployRegionItem.ts
 src/models/DeployRegionsListResponse.ts
 src/models/DeviceInfoDTO.ts
+src/models/DragRequest.ts
 src/models/ErrorResponse.ts
 src/models/FileMetaResponse.ts
 src/models/GetComputerInfo200Response.ts
@@ -72,11 +75,15 @@ src/models/ListTasksResponse.ts
 src/models/ListTasksResponseAllOfData.ts
 src/models/ListWebhookDeliveriesResponse.ts
 src/models/ListWebhookDeliveriesResponseAllOfData.ts
+src/models/LongPressRequest.ts
 src/models/MessageDTO.ts
 src/models/MessageEnvelope.ts
 src/models/MessageState.ts
+src/models/MobileGetUiTree200Response.ts
+src/models/MobileListApps200Response.ts
 src/models/ModelError.ts
 src/models/MoveRequest.ts
+src/models/OpenAppRequest.ts
 src/models/Part.ts
 src/models/PartCustom.ts
 src/models/PartFile.ts
@@ -141,6 +148,7 @@ src/models/TaskSummary.ts
 src/models/TaskWebhookResponse.ts
 src/models/TaskWebhookResponseAllOfData.ts
 src/models/TypeRequest.ts
+src/models/UITreeResult.ts
 src/models/UpdateAgentRequest.ts
 src/models/WebhookDeliveryResponse.ts
 src/models/index.ts

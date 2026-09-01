@@ -2,10 +2,10 @@
 /* eslint-disable */
 /**
  * BeeOS OpenAPI (user contract)
- * The **BeeOS OpenAPI** user contract. The sole implementer is **[`services/openapi-gateway`](../services/openapi-gateway)** (`openapi-gw`, local `:8095`). SDKs (Go / TypeScript) published under [`sdks/beeos-ai-sdk-go`](../../sdks/beeos-ai-sdk-go) and [`sdks/beeos-ai-sdk`](../../sdks/beeos-ai-sdk) are generated directly from this document.  The main user Gateway (`services/gateway`, `:9080`) serves web / mobile / desktop clients and is **not** described by this document. It maintains its own route set independent of the SDK contract.  **Auth:** every operation requires either a user **JWT** or a **`oag_`** User API Key, both on `Authorization: Bearer`. Agent-level protocol endpoints (A2A JSON-RPC with `bak_`, MCP) live in [beeos-agent-integration-v1.yaml](beeos-agent-integration-v1.yaml) and are hosted by A2A Gateway / MCP Gateway — not by `openapi-gateway`.  ## Changelog  ### 1.1.0 (ADR-0022 — dual-layer message storage)  BREAKING for clients that depended on full streaming chunk replay via the persistent message log:  * `GET /api/v1/agents/{agentId}/conversations/{convId}/messages`   and `GET /api/v1/agents/{agentId}/tasks/{taskId}/messages` now   **default-filter out** ephemeral streaming chunks   (`agent_reply_delta`, `agent_thought_chunk`,   `agent_message_chunk`). Add `?include_deltas=true` to opt back in. * `latest_offset` continues to reflect the TRUE server-side max   offset across both filtered and unfiltered rows, so `since=` /   cursor-style pagination is unaffected. * SSE `/events` is **NOT** affected — live consumers continue to   receive every envelope as it happens. * Backwards-compatible recovery path: SSE `/events` may now emit   a `backfill_truncated` event frame when the client reconnects   with `Last-Event-ID` before the oldest retained chunk. SDKs   that don\'t recognise the frame should treat it as a hint to   resume from `oldest_redis_offset` instead (the field carrying   the smallest offset still readable on the per-channel stream). * **Clarified contract**: SSE event `offset` is strictly monotonic   per channel but **NOT guaranteed contiguous** (ADR-0022 §1.2).   Producer-side write failures may leave small holes; clients MUST   use `offset > since`, never `offset == since + 1`.  BREAKING for clients that depended on the `oag_` API key scope vocabulary:  * The per-route scope gate (`agents:read`, `agents:write`,   `tasks:read`, `tasks:write`, `files:read`, `files:write`,   `instances:read`, `instances:write`, plus the `admin:*` wildcard)   has been **removed entirely**. The 37 routes that previously   required scopes are now governed exclusively by owner-ACL — an   `oag_` User API Key inherits full access to its owner\'s resources. * The `403 insufficient_scope` error code is no longer emitted.   Existing callers that branched on it should fold the case into   their generic 403 / `forbidden` handler. * SDK clients that explicitly passed `scopes` to `createAPIKey`   should drop that argument. The Web / Desktop UIs no longer render   scope badges on existing keys. * Existing `oag_` keys continue to work unchanged — the owner_id   binding is preserved, and no key needs to be re-issued.  BREAKING for clients of `GET /api/v1/providers` that read the `capabilities` object on the wire:  * 7 of the 8 `capabilities` field names are now **camelCase**   (`longRunning`, `browserUse`, `codeExec`, `fileSystem`,   `customImage`, `maxDurationSec`, `costModel`) — matching this   OpenAPI contract. Previous wire emitted **snake_case**   (`long_running`, `browser_use`, …) because the server DTO bound   `capabilities` to the raw protobuf message   (`*pb.ProviderCapabilities`) whose auto-generated `json` tags   use snake_case. SDK consumers (`@beeos-ai/sdk`,   `github.com/beeos-ai/sdk-go`) generated from this spec were   **already unable** to read any `capabilities` field — the   camelCase property names produced by the generator never   matched the snake_case the server actually sent. Raw HTTP   callers that hand-coded against the old snake_case names must   migrate; SDK callers gain access to the field set for the first   time without code changes. * Note: the `device` boolean was always a single word — its wire   name (`device`) is unchanged. Only the seven multi-word   capability fields are affected by the rename. * `meta`, `id`, `name`, `description`, `version` are unchanged. * A new drift-guard (`internal/dto/contract_test.go`) now locks   the server DTO to the spec property names, so the two cannot   silently diverge again.  ### 1.0.0  Initial OpenAPI contract (ADR-001). 
+ * The **BeeOS OpenAPI** user contract. The sole implementer is **[`services/openapi-gateway`](../services/openapi-gateway)** (`openapi-gw`, local `:8095`). SDKs (Go / TypeScript) published under [`sdks/beeos-ai-sdk-go`](../../sdks/beeos-ai-sdk-go) and [`sdks/beeos-ai-sdk`](../../sdks/beeos-ai-sdk) are generated directly from this document.  The main user Gateway (`services/gateway`, `:9080`) serves web / mobile / desktop clients and is **not** described by this document. It maintains its own route set independent of the SDK contract.  **Auth:** every operation requires either a user **JWT** or a **`oag_`** User API Key, both on `Authorization: Bearer`. Agent-level protocol endpoints (A2A JSON-RPC with `bak_`, MCP) live in [beeos-agent-integration-v1.yaml](beeos-agent-integration-v1.yaml) and are hosted by A2A Gateway / MCP Gateway — not by `openapi-gateway`.  ## Changelog  ### 1.1.0 (ADR-0022 — dual-layer message storage)  BREAKING for clients that depended on full streaming chunk replay via the persistent message log:  * `GET /api/v1/agents/{agentId}/conversations/{convId}/messages`   and `GET /api/v1/agents/{agentId}/tasks/{taskId}/messages` now   **default-filter out** ephemeral streaming chunks   (`agent_reply_delta`, `agent_thought_chunk`,   `agent_message_chunk`). Add `?include_deltas=true` to opt back in. * `latest_offset` continues to reflect the TRUE server-side max   offset across both filtered and unfiltered rows, so `since=` /   cursor-style pagination is unaffected. * SSE `/events` is **NOT** affected — live consumers continue to   receive every envelope as it happens. * Backwards-compatible recovery path: SSE `/events` may now emit   a `backfill_truncated` event frame when the client reconnects   with `Last-Event-ID` before the oldest retained chunk. SDKs   that don\'t recognise the frame should treat it as a hint to   resume from `oldest_redis_offset` instead (the field carrying   the smallest offset still readable on the per-channel stream). * **Clarified contract**: SSE event `offset` is strictly monotonic   per channel but **NOT guaranteed contiguous** (ADR-0022 §1.2).   Producer-side write failures may leave small holes; clients MUST   use `offset > since`, never `offset == since + 1`.  BREAKING for clients that depended on the `oag_` API key scope vocabulary:  * The per-route scope gate (`agents:read`, `agents:write`,   `tasks:read`, `tasks:write`, `files:read`, `files:write`,   `instances:read`, `instances:write`, plus the `admin:*` wildcard)   has been **removed entirely**. The 37 routes that previously   required scopes are now governed exclusively by owner-ACL — an   `oag_` User API Key inherits full access to its owner\'s resources. * The `403 insufficient_scope` error code is no longer emitted.   Existing callers that branched on it should fold the case into   their generic 403 / `forbidden` handler. * SDK clients that explicitly passed `scopes` to `createAPIKey`   should drop that argument. The Web / Desktop UIs no longer render   scope badges on existing keys. * Existing `oag_` keys continue to work unchanged — the owner_id   binding is preserved, and no key needs to be re-issued.  BREAKING for clients of `GET /api/v1/providers` that read the `capabilities` object on the wire:  * 7 of the 8 `capabilities` field names are now **camelCase**   (`longRunning`, `browserUse`, `codeExec`, `fileSystem`,   `customImage`, `maxDurationSec`, `costModel`) — matching this   OpenAPI contract. Previous wire emitted **snake_case**   (`long_running`, `browser_use`, …) because the server DTO bound   `capabilities` to the raw protobuf message   (`*pb.ProviderCapabilities`) whose auto-generated `json` tags   use snake_case. SDK consumers (`@beeos-ai/sdk`,   `github.com/beeos-ai/sdk-go`) generated from this spec were   **already unable** to read any `capabilities` field — the   camelCase property names produced by the generator never   matched the snake_case the server actually sent. Raw HTTP   callers that hand-coded against the old snake_case names must   migrate; SDK callers gain access to the field set for the first   time without code changes. * Note: the `device` boolean was always a single word — its wire   name (`device`) is unchanged. Only the seven multi-word   capability fields are affected by the rename. * `meta`, `id`, `name`, `description`, `version` are unchanged. * A new drift-guard (`internal/dto/contract_test.go`) now locks   the server DTO to the spec property names, so the two cannot   silently diverge again.  ### 1.0.0  Initial OpenAPI contract (ADR-001).
  *
  * The version of the OpenAPI document: 1.1.0
- * 
+ *
  *
  * NOTE: This class is auto generated by OpenAPI Generator (https://openapi-generator.tech).
  * https://openapi-generator.tech
@@ -16,10 +16,15 @@
 import * as runtime from '../runtime';
 import type {
   ComputerScreenshot200Response,
+  DragRequest,
   ErrorResponse,
   GetComputerInfo200Response,
   InlineObject,
   KeyRequest,
+  LongPressRequest,
+  MobileGetUiTree200Response,
+  MobileListApps200Response,
+  OpenAppRequest,
   PressButtonRequest,
   ScrollRequest,
   SwipeRequest,
@@ -29,6 +34,8 @@ import type {
 import {
     ComputerScreenshot200ResponseFromJSON,
     ComputerScreenshot200ResponseToJSON,
+    DragRequestFromJSON,
+    DragRequestToJSON,
     ErrorResponseFromJSON,
     ErrorResponseToJSON,
     GetComputerInfo200ResponseFromJSON,
@@ -37,6 +44,14 @@ import {
     InlineObjectToJSON,
     KeyRequestFromJSON,
     KeyRequestToJSON,
+    LongPressRequestFromJSON,
+    LongPressRequestToJSON,
+    MobileGetUiTree200ResponseFromJSON,
+    MobileGetUiTree200ResponseToJSON,
+    MobileListApps200ResponseFromJSON,
+    MobileListApps200ResponseToJSON,
+    OpenAppRequestFromJSON,
+    OpenAppRequestToJSON,
     PressButtonRequestFromJSON,
     PressButtonRequestToJSON,
     ScrollRequestFromJSON,
@@ -53,9 +68,41 @@ export interface GetMobileInfoRequest {
     id: string;
 }
 
+export interface MobileDoubleTapRequest {
+    id: string;
+    tapRequest: TapRequest;
+}
+
+export interface MobileDragRequest {
+    id: string;
+    dragRequest: DragRequest;
+}
+
+export interface MobileGetUiTreeRequest {
+    id: string;
+    query?: string;
+    format?: MobileGetUiTreeFormatEnum;
+}
+
 export interface MobileKeyRequest {
     id: string;
     keyRequest: KeyRequest;
+}
+
+export interface MobileListAppsRequest {
+    id: string;
+    includeSystem?: boolean;
+    launchableOnly?: boolean;
+}
+
+export interface MobileLongPressRequest {
+    id: string;
+    longPressRequest: LongPressRequest;
+}
+
+export interface MobileOpenAppRequest {
+    id: string;
+    openAppRequest: OpenAppRequest;
 }
 
 export interface MobilePressButtonRequest {
@@ -88,12 +135,12 @@ export interface MobileTypeRequest {
 }
 
 /**
- * 
+ *
  */
 export class MobileApi extends runtime.BaseAPI {
 
     /**
-     * Returns the android instance\'s online status, screen geometry, supported actions, and foreground app. Returns 404 if the instance is a desktop device (use the `computer` endpoints).  This is the synchronous **control plane**: `online` + `screen_*` reflect the *live* control-channel state at request time. For the device\'s **registration / static** metadata (BYOD device type, model, OS, registered geometry, hardware capabilities) — readable even when the device is offline — use `GET /api/v1/instances/{id}/device/info` (`DeviceInfoDTO`) instead. 
+     * Returns the android instance\'s online status, screen geometry, supported actions, and foreground app. Returns 404 if the instance is a desktop device (use the `computer` endpoints).  This is the synchronous **control plane**: `online` + `screen_*` reflect the *live* control-channel state at request time. For the device\'s **registration / static** metadata (BYOD device type, model, OS, registered geometry, hardware capabilities) — readable even when the device is offline — use `GET /api/v1/instances/{id}/device/info` (`DeviceInfoDTO`) instead.
      * Live mobile control info (geometry + supported actions).
      */
     async getMobileInfoRaw(requestParameters: GetMobileInfoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetComputerInfo200Response>> {
@@ -131,11 +178,174 @@ export class MobileApi extends runtime.BaseAPI {
     }
 
     /**
-     * Returns the android instance\'s online status, screen geometry, supported actions, and foreground app. Returns 404 if the instance is a desktop device (use the `computer` endpoints).  This is the synchronous **control plane**: `online` + `screen_*` reflect the *live* control-channel state at request time. For the device\'s **registration / static** metadata (BYOD device type, model, OS, registered geometry, hardware capabilities) — readable even when the device is offline — use `GET /api/v1/instances/{id}/device/info` (`DeviceInfoDTO`) instead. 
+     * Returns the android instance\'s online status, screen geometry, supported actions, and foreground app. Returns 404 if the instance is a desktop device (use the `computer` endpoints).  This is the synchronous **control plane**: `online` + `screen_*` reflect the *live* control-channel state at request time. For the device\'s **registration / static** metadata (BYOD device type, model, OS, registered geometry, hardware capabilities) — readable even when the device is offline — use `GET /api/v1/instances/{id}/device/info` (`DeviceInfoDTO`) instead.
      * Live mobile control info (geometry + supported actions).
      */
     async getMobileInfo(requestParameters: GetMobileInfoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetComputerInfo200Response> {
         const response = await this.getMobileInfoRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Double-tap at (x, y).
+     */
+    async mobileDoubleTapRaw(requestParameters: MobileDoubleTapRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<InlineObject>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling mobileDoubleTap().'
+            );
+        }
+
+        if (requestParameters['tapRequest'] == null) {
+            throw new runtime.RequiredError(
+                'tapRequest',
+                'Required parameter "tapRequest" was null or undefined when calling mobileDoubleTap().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/instances/{id}/mobile/double_tap`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: TapRequestToJSON(requestParameters['tapRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => InlineObjectFromJSON(jsonValue));
+    }
+
+    /**
+     * Double-tap at (x, y).
+     */
+    async mobileDoubleTap(requestParameters: MobileDoubleTapRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<InlineObject> {
+        const response = await this.mobileDoubleTapRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Drag an object from (x1, y1) to (x2, y2).
+     */
+    async mobileDragRaw(requestParameters: MobileDragRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<InlineObject>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling mobileDrag().'
+            );
+        }
+
+        if (requestParameters['dragRequest'] == null) {
+            throw new runtime.RequiredError(
+                'dragRequest',
+                'Required parameter "dragRequest" was null or undefined when calling mobileDrag().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/instances/{id}/mobile/drag`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DragRequestToJSON(requestParameters['dragRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => InlineObjectFromJSON(jsonValue));
+    }
+
+    /**
+     * Drag an object from (x1, y1) to (x2, y2).
+     */
+    async mobileDrag(requestParameters: MobileDragRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<InlineObject> {
+        const response = await this.mobileDragRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Read the current Android UI hierarchy.
+     */
+    async mobileGetUiTreeRaw(requestParameters: MobileGetUiTreeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<MobileGetUiTree200Response>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling mobileGetUiTree().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['query'] != null) {
+            queryParameters['query'] = requestParameters['query'];
+        }
+
+        if (requestParameters['format'] != null) {
+            queryParameters['format'] = requestParameters['format'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/instances/{id}/mobile/ui_tree`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => MobileGetUiTree200ResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Read the current Android UI hierarchy.
+     */
+    async mobileGetUiTree(requestParameters: MobileGetUiTreeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<MobileGetUiTree200Response> {
+        const response = await this.mobileGetUiTreeRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -191,6 +401,169 @@ export class MobileApi extends runtime.BaseAPI {
      */
     async mobileKey(requestParameters: MobileKeyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<InlineObject> {
         const response = await this.mobileKeyRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * List installed Android applications.
+     */
+    async mobileListAppsRaw(requestParameters: MobileListAppsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<MobileListApps200Response>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling mobileListApps().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['includeSystem'] != null) {
+            queryParameters['include_system'] = requestParameters['includeSystem'];
+        }
+
+        if (requestParameters['launchableOnly'] != null) {
+            queryParameters['launchable_only'] = requestParameters['launchableOnly'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/instances/{id}/mobile/apps`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => MobileListApps200ResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * List installed Android applications.
+     */
+    async mobileListApps(requestParameters: MobileListAppsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<MobileListApps200Response> {
+        const response = await this.mobileListAppsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Long-press at (x, y).
+     */
+    async mobileLongPressRaw(requestParameters: MobileLongPressRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<InlineObject>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling mobileLongPress().'
+            );
+        }
+
+        if (requestParameters['longPressRequest'] == null) {
+            throw new runtime.RequiredError(
+                'longPressRequest',
+                'Required parameter "longPressRequest" was null or undefined when calling mobileLongPress().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/instances/{id}/mobile/long_press`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: LongPressRequestToJSON(requestParameters['longPressRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => InlineObjectFromJSON(jsonValue));
+    }
+
+    /**
+     * Long-press at (x, y).
+     */
+    async mobileLongPress(requestParameters: MobileLongPressRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<InlineObject> {
+        const response = await this.mobileLongPressRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Open an installed app by package id or display name.
+     */
+    async mobileOpenAppRaw(requestParameters: MobileOpenAppRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<InlineObject>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling mobileOpenApp().'
+            );
+        }
+
+        if (requestParameters['openAppRequest'] == null) {
+            throw new runtime.RequiredError(
+                'openAppRequest',
+                'Required parameter "openAppRequest" was null or undefined when calling mobileOpenApp().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearerAuth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/api/v1/instances/{id}/mobile/open_app`;
+        urlPath = urlPath.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: OpenAppRequestToJSON(requestParameters['openAppRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => InlineObjectFromJSON(jsonValue));
+    }
+
+    /**
+     * Open an installed app by package id or display name.
+     */
+    async mobileOpenApp(requestParameters: MobileOpenAppRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<InlineObject> {
+        const response = await this.mobileOpenAppRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -515,3 +888,12 @@ export class MobileApi extends runtime.BaseAPI {
     }
 
 }
+
+/**
+ * @export
+ */
+export const MobileGetUiTreeFormatEnum = {
+    Compact: 'compact',
+    Raw: 'raw'
+} as const;
+export type MobileGetUiTreeFormatEnum = typeof MobileGetUiTreeFormatEnum[keyof typeof MobileGetUiTreeFormatEnum];
