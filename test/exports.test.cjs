@@ -19,6 +19,41 @@ test('ESM root and facade exports load', async () => {
   assert.equal(typeof facade.MobileClient, 'function');
 });
 
+test('facade reads API key and base URL from the environment', async (t) => {
+  const previousKey = process.env.BEEOS_API_KEY;
+  const previousUrl = process.env.BEEOS_API_URL;
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.BEEOS_API_KEY;
+    else process.env.BEEOS_API_KEY = previousKey;
+    if (previousUrl === undefined) delete process.env.BEEOS_API_URL;
+    else process.env.BEEOS_API_URL = previousUrl;
+  });
+  process.env.BEEOS_API_KEY = 'environment-key';
+  process.env.BEEOS_API_URL = 'https://environment.example/';
+
+  const { BeeOSClient } = require('../dist/facade.js');
+  const client = new BeeOSClient({
+    fetch: async (input, init = {}) => {
+      assert.equal(new URL(input.toString()).origin, 'https://environment.example');
+      assert.equal(init.headers.Authorization, 'Bearer environment-key');
+      return Response.json({ success: true, data: [] });
+    },
+  });
+
+  assert.deepEqual(await client.listAgents(), []);
+});
+
+test('facade reports how to configure a missing API key', () => {
+  const previousKey = process.env.BEEOS_API_KEY;
+  delete process.env.BEEOS_API_KEY;
+  try {
+    const { BeeOSClient } = require('../dist/facade.js');
+    assert.throws(() => new BeeOSClient(), /set BEEOS_API_KEY/);
+  } finally {
+    if (previousKey !== undefined) process.env.BEEOS_API_KEY = previousKey;
+  }
+});
+
 test('mobile facade waits for readiness and runs a task to completion', async () => {
   const { MobileClient } = require('../dist/facade.js');
   const fetch = async (input, init = {}) => {

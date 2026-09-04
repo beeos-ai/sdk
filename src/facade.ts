@@ -10,7 +10,7 @@ import type {
 import { Configuration } from './runtime';
 
 export interface BeeOSClientOptions {
-  apiKey: string;
+  apiKey?: string;
   baseUrl?: string;
   fetch?: typeof globalThis.fetch;
 }
@@ -36,14 +36,21 @@ export interface WaitOptions {
 export class BeeOSClient {
   readonly agents: AgentsApi;
   readonly tasks: TasksApi;
-  private readonly apiKey: string;
-  private readonly baseUrl: string;
-  private readonly fetchApi: typeof globalThis.fetch;
+  protected readonly apiKey: string;
+  protected readonly baseUrl: string;
+  protected readonly fetchApi: typeof globalThis.fetch;
 
-  constructor(options: BeeOSClientOptions) {
-    if (!options.apiKey) throw new Error('apiKey is required');
-    this.apiKey = options.apiKey;
-    this.baseUrl = (options.baseUrl ?? 'https://openapi.beeos.ai').replace(/\/+$/, '');
+  constructor(options: BeeOSClientOptions = {}) {
+    const apiKey = options.apiKey?.trim() || readEnvironmentVariable('BEEOS_API_KEY');
+    if (!apiKey) {
+      throw new Error('apiKey is required; pass it explicitly or set BEEOS_API_KEY');
+    }
+    this.apiKey = apiKey;
+    this.baseUrl = (
+      options.baseUrl?.trim()
+      || readEnvironmentVariable('BEEOS_API_URL')
+      || 'https://openapi.beeos.ai'
+    ).replace(/\/+$/, '');
     this.fetchApi = options.fetch ?? globalThis.fetch;
     const configuration = new Configuration({
       basePath: this.baseUrl,
@@ -131,9 +138,9 @@ export class MobileClient extends BeeOSClient {
     this.agentId = options.agentId;
     this.instanceId = options.instanceId;
     this.mobile = new MobileApi(new Configuration({
-      basePath: (options.baseUrl ?? 'https://openapi.beeos.ai').replace(/\/+$/, ''),
-      accessToken: options.apiKey,
-      fetchApi: options.fetch ?? globalThis.fetch,
+      basePath: this.baseUrl,
+      accessToken: this.apiKey,
+      fetchApi: this.fetchApi,
     }));
   }
 
@@ -174,6 +181,13 @@ export class MobileClient extends BeeOSClient {
 }
 
 type GetMobileInfoResult = Awaited<ReturnType<MobileApi['getMobileInfo']>>;
+
+function readEnvironmentVariable(name: string): string | undefined {
+  const runtime = globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  };
+  return runtime.process?.env?.[name]?.trim() || undefined;
+}
 
 function isTerminalTaskStatus(status: string): boolean {
   return new Set(['completed', 'failed', 'canceled', 'cancelled', 'timeout', 'rejected']).has(status);
