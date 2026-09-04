@@ -16,18 +16,17 @@ npm add @beeos-ai/sdk
 
 ## Usage
 
-- **Base URL** — point the client at your `openapi-gateway` host (e.g.
-  `http://localhost:8095` in dev, `https://openapi.beeos.ai` in prod).
-- **Auth** — the client does **not** include JWT. Pass
-  `Authorization: Bearer <jwt>` or `Authorization: Bearer oag_<user-api-key>`
-  via `RequestInit` / the generated `Configuration`.
+- **Base URL** — the facade uses `https://openapi.beeos.ai` by default. Set
+  `BEEOS_API_URL` or pass `baseUrl` to target another environment.
+- **Auth** — set `BEEOS_API_KEY`, or pass `apiKey` explicitly. The generated
+  client also supports custom authorization through `Configuration`.
 
 For the stable, task-focused facade:
 
 ```ts
 import { BeeOSClient } from "@beeos-ai/sdk";
 
-const beeos = new BeeOSClient({ apiKey: process.env.BEEOS_API_KEY! });
+const beeos = new BeeOSClient();
 const agents = await beeos.listAgents();
 const task = await beeos.createTask(agents[0].id, { message: "Open Settings" });
 const snapshot = await beeos.getTask(agents[0].id, task.data.taskId);
@@ -42,7 +41,6 @@ For phone automation across Device Agent, BeeRunner, and Redroid:
 import { MobileClient } from "@beeos-ai/sdk/facade";
 
 const mobile = new MobileClient({
-  apiKey: process.env.BEEOS_API_KEY!,
   agentId: "agent-id",
   instanceId: "instance-id",
 });
