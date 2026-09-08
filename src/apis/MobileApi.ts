@@ -2,10 +2,10 @@
 /* eslint-disable */
 /**
  * BeeOS OpenAPI (user contract)
- * The **BeeOS OpenAPI** user contract. The sole implementer is **[`services/openapi-gateway`](../services/openapi-gateway)** (`openapi-gw`, local `:8095`). SDKs (Go / TypeScript) published under [`sdks/beeos-ai-sdk-go`](../../sdks/beeos-ai-sdk-go) and [`sdks/beeos-ai-sdk`](../../sdks/beeos-ai-sdk) are generated directly from this document.  The main user Gateway (`services/gateway`, `:9080`) serves web / mobile / desktop clients and is **not** described by this document. It maintains its own route set independent of the SDK contract.  **Auth:** every operation requires either a user **JWT** or a **`oag_`** User API Key, both on `Authorization: Bearer`. Agent-level protocol endpoints (A2A JSON-RPC with `bak_`, MCP) live in [beeos-agent-integration-v1.yaml](beeos-agent-integration-v1.yaml) and are hosted by A2A Gateway / MCP Gateway — not by `openapi-gateway`.  ## Changelog  ### 1.1.0 (ADR-0022 — dual-layer message storage)  BREAKING for clients that depended on full streaming chunk replay via the persistent message log:  * `GET /api/v1/agents/{agentId}/conversations/{convId}/messages`   and `GET /api/v1/agents/{agentId}/tasks/{taskId}/messages` now   **default-filter out** ephemeral streaming chunks   (`agent_reply_delta`, `agent_thought_chunk`,   `agent_message_chunk`). Add `?include_deltas=true` to opt back in. * `latest_offset` continues to reflect the TRUE server-side max   offset across both filtered and unfiltered rows, so `since=` /   cursor-style pagination is unaffected. * SSE `/events` is **NOT** affected — live consumers continue to   receive every envelope as it happens. * Backwards-compatible recovery path: SSE `/events` may now emit   a `backfill_truncated` event frame when the client reconnects   with `Last-Event-ID` before the oldest retained chunk. SDKs   that don\'t recognise the frame should treat it as a hint to   resume from `oldest_redis_offset` instead (the field carrying   the smallest offset still readable on the per-channel stream). * **Clarified contract**: SSE event `offset` is strictly monotonic   per channel but **NOT guaranteed contiguous** (ADR-0022 §1.2).   Producer-side write failures may leave small holes; clients MUST   use `offset > since`, never `offset == since + 1`.  BREAKING for clients that depended on the `oag_` API key scope vocabulary:  * The per-route scope gate (`agents:read`, `agents:write`,   `tasks:read`, `tasks:write`, `files:read`, `files:write`,   `instances:read`, `instances:write`, plus the `admin:*` wildcard)   has been **removed entirely**. The 37 routes that previously   required scopes are now governed exclusively by owner-ACL — an   `oag_` User API Key inherits full access to its owner\'s resources. * The `403 insufficient_scope` error code is no longer emitted.   Existing callers that branched on it should fold the case into   their generic 403 / `forbidden` handler. * SDK clients that explicitly passed `scopes` to `createAPIKey`   should drop that argument. The Web / Desktop UIs no longer render   scope badges on existing keys. * Existing `oag_` keys continue to work unchanged — the owner_id   binding is preserved, and no key needs to be re-issued.  BREAKING for clients of `GET /api/v1/providers` that read the `capabilities` object on the wire:  * 7 of the 8 `capabilities` field names are now **camelCase**   (`longRunning`, `browserUse`, `codeExec`, `fileSystem`,   `customImage`, `maxDurationSec`, `costModel`) — matching this   OpenAPI contract. Previous wire emitted **snake_case**   (`long_running`, `browser_use`, …) because the server DTO bound   `capabilities` to the raw protobuf message   (`*pb.ProviderCapabilities`) whose auto-generated `json` tags   use snake_case. SDK consumers (`@beeos-ai/sdk`,   `github.com/beeos-ai/sdk-go`) generated from this spec were   **already unable** to read any `capabilities` field — the   camelCase property names produced by the generator never   matched the snake_case the server actually sent. Raw HTTP   callers that hand-coded against the old snake_case names must   migrate; SDK callers gain access to the field set for the first   time without code changes. * Note: the `device` boolean was always a single word — its wire   name (`device`) is unchanged. Only the seven multi-word   capability fields are affected by the rename. * `meta`, `id`, `name`, `description`, `version` are unchanged. * A new drift-guard (`internal/dto/contract_test.go`) now locks   the server DTO to the spec property names, so the two cannot   silently diverge again.  ### 1.0.0  Initial OpenAPI contract (ADR-001).
+ * The **BeeOS OpenAPI** user contract. The sole implementer is **[`services/openapi-gateway`](../services/openapi-gateway)** (`openapi-gw`, local `:8095`). SDKs (Go / TypeScript) published under [`sdks/beeos-ai-sdk-go`](../../sdks/beeos-ai-sdk-go) and [`sdks/beeos-ai-sdk`](../../sdks/beeos-ai-sdk) are generated directly from this document.  The main user Gateway (`services/gateway`, `:9080`) serves web / mobile / desktop clients and is **not** described by this document. It maintains its own route set independent of the SDK contract.  **Auth:** every operation requires either a user **JWT** or a **`oag_`** User API Key, both on `Authorization: Bearer`. Agent-level protocol endpoints (A2A JSON-RPC with `bak_`, MCP) live in [beeos-agent-integration-v1.yaml](beeos-agent-integration-v1.yaml) and are hosted by A2A Gateway / MCP Gateway — not by `openapi-gateway`.  **Atomic control admission:** Computer/Mobile `info` shares a 300/minute owner-scoped budget; all other Computer/Mobile atomic operations together share 60/minute. Equivalent MCP atomic tools consume the same budgets. Capacity replenishes continuously (GCRA), with an initial burst equal to the minute rate. Switching credentials, devices or protocols does not reset capacity. Exhaustion returns 429 `rate_limited` with `Retry-After`; an unavailable quota store returns 503 `control_rate_limit_unavailable` before dispatch. These limits do not define billing or device task concurrency.  ## Changelog  ### 1.1.0 (ADR-0022 — dual-layer message storage)  BREAKING for clients that depended on full streaming chunk replay via the persistent message log:  * `GET /api/v1/agents/{agentId}/conversations/{convId}/messages`   and `GET /api/v1/agents/{agentId}/tasks/{taskId}/messages` now   **default-filter out** ephemeral streaming chunks   (`agent_reply_delta`, `agent_thought_chunk`,   `agent_message_chunk`). Add `?include_deltas=true` to opt back in. * `latest_offset` continues to reflect the TRUE server-side max   offset across both filtered and unfiltered rows, so `since=` /   cursor-style pagination is unaffected. * SSE `/events` is **NOT** affected — live consumers continue to   receive every envelope as it happens. * Backwards-compatible recovery path: SSE `/events` may now emit   a `backfill_truncated` event frame when the client reconnects   with `Last-Event-ID` before the oldest retained chunk. SDKs   that don\'t recognise the frame should treat it as a hint to   resume from `oldest_redis_offset` instead (the field carrying   the smallest offset still readable on the per-channel stream). * **Clarified contract**: SSE event `offset` is strictly monotonic   per channel but **NOT guaranteed contiguous** (ADR-0022 §1.2).   Producer-side write failures may leave small holes; clients MUST   use `offset > since`, never `offset == since + 1`.  BREAKING for clients that depended on the `oag_` API key scope vocabulary:  * The per-route scope gate (`agents:read`, `agents:write`,   `tasks:read`, `tasks:write`, `files:read`, `files:write`,   `instances:read`, `instances:write`, plus the `admin:*` wildcard)   has been **removed entirely**. The 37 routes that previously   required scopes are now governed exclusively by owner-ACL — an   `oag_` User API Key inherits full access to its owner\'s resources. * The `403 insufficient_scope` error code is no longer emitted.   Existing callers that branched on it should fold the case into   their generic 403 / `forbidden` handler. * SDK clients that explicitly passed `scopes` to `createAPIKey`   should drop that argument. The Web / Desktop UIs no longer render   scope badges on existing keys. * Existing `oag_` keys continue to work unchanged — the owner_id   binding is preserved, and no key needs to be re-issued.  BREAKING for clients of `GET /api/v1/providers` that read the `capabilities` object on the wire:  * 7 of the 8 `capabilities` field names are now **camelCase**   (`longRunning`, `browserUse`, `codeExec`, `fileSystem`,   `customImage`, `maxDurationSec`, `costModel`) — matching this   OpenAPI contract. Previous wire emitted **snake_case**   (`long_running`, `browser_use`, …) because the server DTO bound   `capabilities` to the raw protobuf message   (`*pb.ProviderCapabilities`) whose auto-generated `json` tags   use snake_case. SDK consumers (`@beeos-ai/sdk`,   `github.com/beeos-ai/sdk-go`) generated from this spec were   **already unable** to read any `capabilities` field — the   camelCase property names produced by the generator never   matched the snake_case the server actually sent. Raw HTTP   callers that hand-coded against the old snake_case names must   migrate; SDK callers gain access to the field set for the first   time without code changes. * Note: the `device` boolean was always a single word — its wire   name (`device`) is unchanged. Only the seven multi-word   capability fields are affected by the rename. * `meta`, `id`, `name`, `description`, `version` are unchanged. * A new drift-guard (`internal/dto/contract_test.go`) now locks   the server DTO to the spec property names, so the two cannot   silently diverge again.  ### 1.0.0  Initial OpenAPI contract (ADR-001). 
  *
  * The version of the OpenAPI document: 1.1.0
- *
+ * 
  *
  * NOTE: This class is auto generated by OpenAPI Generator (https://openapi-generator.tech).
  * https://openapi-generator.tech
@@ -135,12 +135,12 @@ export interface MobileTypeRequest {
 }
 
 /**
- *
+ * 
  */
 export class MobileApi extends runtime.BaseAPI {
 
     /**
-     * Returns the android instance\'s online status, screen geometry, supported actions, and foreground app. Returns 404 if the instance is a desktop device (use the `computer` endpoints).  This is the synchronous **control plane**: `online` + `screen_*` reflect the *live* control-channel state at request time. For the device\'s **registration / static** metadata (BYOD device type, model, OS, registered geometry, hardware capabilities) — readable even when the device is offline — use `GET /api/v1/instances/{id}/device/info` (`DeviceInfoDTO`) instead.
+     * Returns the android instance\'s online status, screen geometry, supported actions, and foreground app. Returns 404 if the instance is a desktop device (use the `computer` endpoints).  This is the synchronous **control plane**: `online` + `screen_*` reflect the *live* control-channel state at request time. For the device\'s **registration / static** metadata (BYOD device type, model, OS, registered geometry, hardware capabilities) — readable even when the device is offline — use `GET /api/v1/instances/{id}/device/info` (`DeviceInfoDTO`) instead. 
      * Live mobile control info (geometry + supported actions).
      */
     async getMobileInfoRaw(requestParameters: GetMobileInfoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GetComputerInfo200Response>> {
@@ -178,7 +178,7 @@ export class MobileApi extends runtime.BaseAPI {
     }
 
     /**
-     * Returns the android instance\'s online status, screen geometry, supported actions, and foreground app. Returns 404 if the instance is a desktop device (use the `computer` endpoints).  This is the synchronous **control plane**: `online` + `screen_*` reflect the *live* control-channel state at request time. For the device\'s **registration / static** metadata (BYOD device type, model, OS, registered geometry, hardware capabilities) — readable even when the device is offline — use `GET /api/v1/instances/{id}/device/info` (`DeviceInfoDTO`) instead.
+     * Returns the android instance\'s online status, screen geometry, supported actions, and foreground app. Returns 404 if the instance is a desktop device (use the `computer` endpoints).  This is the synchronous **control plane**: `online` + `screen_*` reflect the *live* control-channel state at request time. For the device\'s **registration / static** metadata (BYOD device type, model, OS, registered geometry, hardware capabilities) — readable even when the device is offline — use `GET /api/v1/instances/{id}/device/info` (`DeviceInfoDTO`) instead. 
      * Live mobile control info (geometry + supported actions).
      */
     async getMobileInfo(requestParameters: GetMobileInfoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GetComputerInfo200Response> {
@@ -297,6 +297,7 @@ export class MobileApi extends runtime.BaseAPI {
     }
 
     /**
+     * Raw content follows the runtime\'s native format. Portal/BeeRunner returns accessibility JSON rather than ADB XML and does not support a nonempty query filter.
      * Read the current Android UI hierarchy.
      */
     async mobileGetUiTreeRaw(requestParameters: MobileGetUiTreeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<MobileGetUiTree200Response>> {
@@ -342,6 +343,7 @@ export class MobileApi extends runtime.BaseAPI {
     }
 
     /**
+     * Raw content follows the runtime\'s native format. Portal/BeeRunner returns accessibility JSON rather than ADB XML and does not support a nonempty query filter.
      * Read the current Android UI hierarchy.
      */
     async mobileGetUiTree(requestParameters: MobileGetUiTreeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<MobileGetUiTree200Response> {
@@ -405,6 +407,7 @@ export class MobileApi extends runtime.BaseAPI {
     }
 
     /**
+     * Portal/BeeRunner exposes launchable inventory only and requires launchable_only=true. Unsupported inventory scopes return action_unsupported instead of a silently partial result.
      * List installed Android applications.
      */
     async mobileListAppsRaw(requestParameters: MobileListAppsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<MobileListApps200Response>> {
@@ -450,6 +453,7 @@ export class MobileApi extends runtime.BaseAPI {
     }
 
     /**
+     * Portal/BeeRunner exposes launchable inventory only and requires launchable_only=true. Unsupported inventory scopes return action_unsupported instead of a silently partial result.
      * List installed Android applications.
      */
     async mobileListApps(requestParameters: MobileListAppsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<MobileListApps200Response> {
@@ -513,6 +517,7 @@ export class MobileApi extends runtime.BaseAPI {
     }
 
     /**
+     * Runtime options vary. Portal/BeeRunner supports package or display-name launch and explicit activity, but rejects a nonempty locale override with action_unsupported.
      * Open an installed app by package id or display name.
      */
     async mobileOpenAppRaw(requestParameters: MobileOpenAppRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<InlineObject>> {
@@ -560,6 +565,7 @@ export class MobileApi extends runtime.BaseAPI {
     }
 
     /**
+     * Runtime options vary. Portal/BeeRunner supports package or display-name launch and explicit activity, but rejects a nonempty locale override with action_unsupported.
      * Open an installed app by package id or display name.
      */
     async mobileOpenApp(requestParameters: MobileOpenAppRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<InlineObject> {
