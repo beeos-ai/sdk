@@ -53,6 +53,53 @@ app discovery, open app, drag, double tap, and long press. BeeRunner uses the
 durable task methods; its atomic-control capability is intentionally not
 advertised until a trusted Portal adapter exists.
 
+## Resource Facade (Unreleased)
+
+The additions below are implemented in the local development branch. They are
+not in the published `0.8.0` package yet. Generated API exports remain available.
+
+```ts
+const instance = beeos.instance(process.env.BEEOS_INSTANCE_ID!);
+await instance.mobile.waitReady({ timeoutMs: 60_000 });
+const info = await instance.mobile.info();
+if (info.data?.supportedActions?.includes('ui_tree')) {
+  const tree = await instance.mobile.uiTree({ format: 'compact' });
+  console.log(tree.data);
+}
+
+const task = await beeos.submitTask(process.env.BEEOS_AGENT_ID!, {
+  message: 'Open Settings and report the battery level without changing settings',
+  idempotencyKey: crypto.randomUUID(),
+});
+const result = await task.wait({ timeoutMs: 120_000 });
+console.log(result.data.result);
+```
+
+Use an explicit agent belonging to the chosen instance, not the first item in
+the account. Inspect runtime capabilities before atomic control; this facade
+does not bypass `action_unsupported` or `device_busy`.
+
+- `instances.create/get/list` and `instance.start/stop/restart/destroy` reuse the
+  existing lifecycle API. Destroy only resources this workflow created.
+- `instance.computer.click/move/scroll/type/key/screenshot` bind desktop control
+  to the same instance. The raw generated APIs are still an escape hatch.
+- `task.get/wait/cancel/messages/events` resume an existing task without
+  resubmitting. `wait` requires `completed` by default; `TaskExecutionError`
+  retains the failed snapshot. `requireSuccess: false` explicitly accepts any
+  terminal. The pre-existing `MobileClient.run` keeps its terminal-only behavior.
+- Local timeout/abort never cancels the durable task implicitly. Call
+  `task.cancel()` explicitly; do not blindly retry a write after a timeout/409.
+- For SSE use `task.events({ since, signal: AbortSignal.timeout(120_000) })`.
+  Persist offsets, which are increasing but not necessarily contiguous. Handle
+  `backfill_truncated` explicitly. Breaking the loop releases the connection.
+- `beeos.files.download(fileId, { maxBytes, expectedContentType })` returns a
+  `Uint8Array`. It resolves owner-authorized metadata, defaults to a 32 MiB cap,
+  rejects redirects/non-HTTPS URLs, and never forwards the API key to storage.
+  `allowInsecureHttp: true` is an explicit option for a trusted local fixture.
+
+These convenience methods do not imply that every runtime supports every
+operation, or that a `completed` task produced a valid PDF/business result.
+
 ## Regenerate (maintainers)
 
 From the monorepo: `cd sdks/openapi-sdk && ./generate.sh` (or `npm run gen`).

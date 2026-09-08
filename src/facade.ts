@@ -8,6 +8,12 @@ import type {
   TaskResponse,
 } from './models/index';
 import { Configuration } from './runtime';
+import { BeeOSTimeoutError, RequestOptions, delay, requireID, withDeadline } from './async';
+import { FilesResource, InstancesResource, MobileResource, TaskExecutionError, TaskResource } from './resources';
+
+export { BeeOSTimeoutError } from './async';
+export type { RequestOptions } from './async';
+export * from './resources';
 
 export interface BeeOSClientOptions {
   apiKey?: string;
@@ -36,6 +42,8 @@ export interface WaitOptions {
 export class BeeOSClient {
   readonly agents: AgentsApi;
   readonly tasks: TasksApi;
+  readonly instances: InstancesResource;
+  readonly files: FilesResource;
   protected readonly apiKey: string;
   protected readonly baseUrl: string;
   protected readonly fetchApi: typeof globalThis.fetch;
@@ -59,6 +67,8 @@ export class BeeOSClient {
     });
     this.agents = new AgentsApi(configuration);
     this.tasks = new TasksApi(configuration);
+    this.instances = new InstancesResource(this, configuration);
+    this.files = new FilesResource(configuration, this.fetchApi);
   }
 
   async listAgents(): Promise<AgentDTO[]> {
@@ -66,20 +76,56 @@ export class BeeOSClient {
     return response.data;
   }
 
-  createTask(agentId: string, request: CreateTaskRequest): Promise<TaskCreatedResponse> {
-    return this.tasks.createTask({ agentId, createTaskRequest: request });
+  createTask(agentId: string, request: CreateTaskRequest, options: RequestOptions = {}): Promise<TaskCreatedResponse> {
+    requireID(agentId, 'agentId');
+    return withDeadline((signal) => this.tasks.createTask({ agentId, createTaskRequest: request }, { signal }), options);
   }
 
-  getTask(agentId: string, taskId: string): Promise<TaskResponse> {
-    return this.tasks.getTask({ agentId, taskId });
+  getTask(agentId: string, taskId: string, options: RequestOptions = {}): Promise<TaskResponse> {
+    requireID(agentId, 'agentId'); requireID(taskId, 'taskId');
+    return withDeadline((signal) => this.tasks.getTask({ agentId, taskId }, { signal }), options);
   }
 
   cancelTask(
     agentId: string,
     taskId: string,
     request?: CancelTaskRequest,
+    options: RequestOptions = {},
   ): Promise<TaskResponse> {
-    return this.tasks.cancelTask({ agentId, taskId, cancelTaskRequest: request });
+    requireID(agentId, 'agentId'); requireID(taskId, 'taskId');
+    return withDeadline((signal) => this.tasks.cancelTask({ agentId, taskId, cancelTaskRequest: request }, { signal }), options);
+  }
+
+  instance(id: string) { return this.instances.ref(id); }
+
+  task(agentId: string, taskId: string) { return new TaskResource(this, agentId, taskId); }
+
+  async submitTask(agentId: string, request: CreateTaskRequest, options: RequestOptions = {}) {
+    const response = await this.createTask(agentId, request, options);
+    return this.task(agentId, requireID(response.data?.taskId, 'created taskId'));
+  }
+
+  async waitTask(agentId: string, taskId: string, options: WaitOptions & { requireSuccess?: boolean } = {}): Promise<TaskResponse> {
+    requireID(agentId, 'agentId'); requireID(taskId, 'taskId');
+    try {
+      return await withDeadline(async (signal) => {
+        while (true) {
+          const snapshot = await this.tasks.getTask({ agentId, taskId }, { signal });
+          if (snapshot.data?.taskId !== taskId || snapshot.data.agentId !== agentId) throw new Error('Task response identity does not match the requested task');
+          if (snapshot.data?.truncated) throw new Error('Task snapshot is truncated; resume taskEvents for the authoritative tail');
+          if (isTerminalTaskStatus(snapshot.data?.status)) {
+            if (options.requireSuccess !== false && snapshot.data.status !== 'completed') throw new TaskExecutionError(snapshot);
+            return snapshot;
+          }
+          await delay(options.pollIntervalMs ?? 1_000, signal);
+        }
+      }, options, 120_000);
+    } catch (error) {
+      if (error instanceof BeeOSTimeoutError) {
+        error.message = `Task ${taskId} did not finish before timeout; it was not automatically cancelled`;
+      }
+      throw error;
+    }
   }
 
   async *taskEvents(
@@ -87,9 +133,11 @@ export class BeeOSClient {
     taskId: string,
     options: { since?: number; signal?: AbortSignal } = {},
   ): AsyncGenerator<TaskEvent> {
+    requireID(agentId, 'agentId'); requireID(taskId, 'taskId');
+    if (options.since !== undefined && (!Number.isSafeInteger(options.since) || options.since < 0)) throw new RangeError('since must be a nonnegative integer');
+    options.signal?.throwIfAborted();
     const url = new URL(
-      `/api/v1/agents/${encodeURIComponent(agentId)}/tasks/${encodeURIComponent(taskId)}/events`,
-      this.baseUrl,
+      `${this.baseUrl}/api/v1/agents/${encodeURIComponent(agentId)}/tasks/${encodeURIComponent(taskId)}/events`,
     );
     if (options.since !== undefined) url.searchParams.set('since', String(options.since));
     const response = await this.fetchApi(url, {
@@ -99,27 +147,42 @@ export class BeeOSClient {
       },
       signal: options.signal,
     });
-    if (!response.ok || !response.body) {
+    if (!response.ok || !response.body || response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'text/event-stream') {
+      await response.body?.cancel().catch(() => undefined);
       throw new Error(`task event stream failed: HTTP ${response.status}`);
     }
 
     const reader = response.body.getReader();
-    const decoder = new TextDecoder();
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    const encoder = new TextEncoder();
     let buffer = '';
+    let lastId: string | undefined;
     try {
       while (true) {
         const { done, value } = await reader.read();
-        buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, '\n');
-        let boundary: number;
-        while ((boundary = buffer.indexOf('\n\n')) >= 0) {
-          const frame = buffer.slice(0, boundary);
-          buffer = buffer.slice(boundary + 2);
+        buffer += decoder.decode(value, { stream: !done });
+        let boundary: RegExpExecArray | null;
+        while ((boundary = /\r?\n\r?\n/.exec(buffer)) !== null) {
+          const frame = buffer.slice(0, boundary.index).replace(/\r\n/g, '\n');
+          buffer = buffer.slice(boundary.index + boundary[0].length);
+          if (encoder.encode(frame).byteLength > 4 * 1024 * 1024) throw new Error('Task event frame exceeds the 4 MiB buffer limit');
+          for (const line of frame.split('\n')) {
+            if (line === 'id' || line.startsWith('id:')) {
+              const value = line === 'id' ? '' : line.slice(3).replace(/^ /, '');
+              if (!value.includes('\0')) lastId = value;
+            }
+          }
           const parsed = parseSSEFrame(frame);
-          if (parsed) yield parsed;
+          if (parsed) {
+            yield { ...parsed, id: lastId };
+            if (parsed.event === 'end') return;
+          }
         }
+        if (encoder.encode(buffer).byteLength > 4 * 1024 * 1024) throw new Error('Task event frame exceeds the 4 MiB buffer limit');
         if (done) break;
       }
     } finally {
+      await reader.cancel().catch(() => undefined);
       reader.releaseLock();
     }
   }
@@ -145,30 +208,17 @@ export class MobileClient extends BeeOSClient {
   }
 
   async waitReady(options: WaitOptions = {}): Promise<GetMobileInfoResult> {
-    const timeoutMs = options.timeoutMs ?? 60_000;
-    const pollIntervalMs = options.pollIntervalMs ?? 1_000;
-    const deadline = Date.now() + timeoutMs;
-    while (true) {
-      options.signal?.throwIfAborted();
-      const response = await this.mobile.getMobileInfo({ id: this.instanceId });
-      if (response.data?.online) return response;
-      if (Date.now() >= deadline) throw new Error('mobile runtime did not become ready before timeout');
-      await delay(pollIntervalMs, options.signal);
-    }
+    return new MobileResource(this.mobile, this.instanceId).waitReady(options);
   }
 
   async run(request: CreateTaskRequest, options: WaitOptions = {}): Promise<TaskResponse> {
-    const created = await this.createTask(this.agentId, request);
-    const timeoutMs = options.timeoutMs ?? request.deadlineMs ?? 120_000;
-    const pollIntervalMs = options.pollIntervalMs ?? 1_000;
-    const deadline = Date.now() + timeoutMs;
-    while (true) {
-      options.signal?.throwIfAborted();
-      const snapshot = await this.getTask(this.agentId, created.data.taskId);
-      if (isTerminalTaskStatus(snapshot.data.status)) return snapshot;
-      if (Date.now() >= deadline) throw new Error(`task ${created.data.taskId} did not finish before timeout`);
-      await delay(pollIntervalMs, options.signal);
-    }
+    return withDeadline(async (signal) => {
+      const created = await this.createTask(this.agentId, request, { signal });
+      return this.waitTask(this.agentId, created.data.taskId, {
+        ...options, signal, requireSuccess: false,
+        timeoutMs: options.timeoutMs ?? request.deadlineMs ?? 120_000,
+      });
+    }, options, request.deadlineMs ?? 120_000);
   }
 
   watch(taskId: string, options: { since?: number; signal?: AbortSignal } = {}): AsyncGenerator<TaskEvent> {
@@ -191,17 +241,6 @@ function readEnvironmentVariable(name: string): string | undefined {
 
 function isTerminalTaskStatus(status: string): boolean {
   return new Set(['completed', 'failed', 'canceled', 'cancelled', 'timeout', 'rejected']).has(status);
-}
-
-function delay(ms: number, signal?: AbortSignal): Promise<void> {
-  if (ms <= 0) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
-      clearTimeout(timer);
-      reject(signal.reason ?? new Error('aborted'));
-    }, { once: true });
-  });
 }
 
 function parseSSEFrame(frame: string): TaskEvent | undefined {
