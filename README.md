@@ -1,5 +1,7 @@
 # @beeos-ai/sdk
 
+> **Archived — use [`beeos-cloud-sdks`](https://github.com/beeos-ai/beeos-cloud-sdks) instead.** This package targeted the retired BeeOS OpenAPI gateway and is no longer maintained. The TypeScript client is now `@beeos-ai/cloud-sdk` from `beeos-cloud-sdks`. Published `@beeos-ai/sdk` versions stay installable but receive no updates.
+
 TypeScript (Fetch API) client for the BeeOS OpenAPI contract — served
 exclusively by [`openapi-gateway`](https://github.com/beeos-ai/openagent/tree/main/backend/services/openapi-gateway).
 
